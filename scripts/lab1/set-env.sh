@@ -1,1 +1,1 @@
-export ROOT_PATH=/home/stu/chfs
+export ROOT_PATH=/home/rda/chfs

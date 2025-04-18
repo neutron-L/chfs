@@ -11,7 +11,7 @@ rm -rf $CHFSDIR1
 mkdir $CHFSDIR1 || exit 1
 sleep 1
 echo "Starting chfs"
-/home/stu/chfs/build/bin/fs $CHFSDIR1 > $ROOT_PATH/chfs.log 2>&1 &
+/home/rda/chfs/build/bin/fs $CHFSDIR1 > $ROOT_PATH/chfs.log 2>&1 &
 
 sleep 5
 
