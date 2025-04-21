@@ -6,17 +6,21 @@ namespace chfs {
 
 // {Your code here}
 auto FileOperation::alloc_inode(InodeType type) -> ChfsResult<inode_id_t> {
-  inode_id_t inode_id = static_cast<inode_id_t>(0);
-  auto inode_res = ChfsResult<inode_id_t>(inode_id);
-
   // TODO:
   // 1. Allocate a block for the inode.
   // 2. Allocate an inode.
   // 3. Initialize the inode block
   //    and write the block back to block manager.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  auto free_block_res = this->block_allocator_->allocate();
+  if (free_block_res.is_err()) {
+      return ChfsResult<inode_id_t>(ErrorType::OUT_OF_RESOURCE);
+  }
+  auto free_block = free_block_res.unwrap();
+  auto inode_id = this->inode_manager_->allocate_inode(type, free_block)
+          .unwrap();
 
-  return inode_res;
+  return ChfsResult<inode_id_t>(inode_id);
 }
 
 auto FileOperation::getattr(inode_id_t id) -> ChfsResult<FileAttr> {
