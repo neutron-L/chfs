@@ -76,7 +76,8 @@ auto BlockManager::write_block(block_id_t block_id, const u8 *data)
     -> ChfsNullResult {
   
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  std::memcpy(this->block_data + block_id * this->block_sz, data, this->block_sz);
 
   return KNullOk;
 }
@@ -86,7 +87,9 @@ auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
     -> ChfsNullResult {
   
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  len = std::min(len, this->block_sz - offset % this->block_sz);
+  std::memcpy(this->block_data + block_id * this->block_sz + (offset % this->block_sz), data, len);
 
   return KNullOk;
 }
@@ -94,7 +97,8 @@ auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
 auto BlockManager::read_block(block_id_t block_id, u8 *data) -> ChfsNullResult {
 
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  std::memcpy(data, this->block_data + block_id * this->block_sz, this->block_sz);
 
   return KNullOk;
 }
@@ -102,7 +106,10 @@ auto BlockManager::read_block(block_id_t block_id, u8 *data) -> ChfsNullResult {
 auto BlockManager::zero_block(block_id_t block_id) -> ChfsNullResult {
   
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  for (usize i = 0; i < this->block_sz; ++i) {
+    this->block_data[block_id * this->block_sz + i] = 0;
+  }
 
   return KNullOk;
 }
