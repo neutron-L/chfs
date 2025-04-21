@@ -147,7 +147,7 @@ auto InodeManager::get(inode_id_t id) -> ChfsResult<block_id_t> {
   }
   inode_id_t idx = LOGIC_2_RAW(id);
   auto inode_per_block = bm->block_size() / sizeof(block_id_t);
-  std::vector<u64> buffer(bm->block_size() / sizeof(u64));
+  std::vector<block_id_t> buffer(bm->block_size() / sizeof(block_id_t));
   bm->read_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(buffer.data()));
   res_block_id = buffer[idx % inode_per_block];
 
@@ -249,8 +249,8 @@ auto InodeManager::free_inode(inode_id_t id) -> ChfsNullResult {
   inode_id_t idx = LOGIC_2_RAW(id);
   block_id_t bid = KInvalidBlockID;
   auto inode_per_block = bm->block_size() / sizeof(block_id_t);
-  std::vector<u64> buffer(bm->block_size() / sizeof(u64));
-  bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), idx % inode_per_block, sizeof(u64));
+  std::vector<block_id_t> buffer(bm->block_size() / sizeof(block_id_t));
+  bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), idx % inode_per_block, sizeof(block_id_t));
 
   return KNullOk;
 }
