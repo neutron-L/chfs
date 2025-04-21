@@ -127,7 +127,7 @@ auto BlockAllocator::allocate() -> ChfsResult<block_id_t> {
       // UNIMPLEMENTED();
       Bitmap(buffer.data(), bm->block_size()).set(res.value());
       bm->write_block(i + this->bitmap_block_id, buffer.data());
-      retval = (i + this->bitmap_block_id) * bm->block_size() * KBitsPerByte + res.value();
+      retval = i * bm->block_size() * KBitsPerByte + res.value();
       return ChfsResult<block_id_t>(retval);
     }
   }
