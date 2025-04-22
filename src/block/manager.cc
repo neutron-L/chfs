@@ -88,8 +88,9 @@ auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
   
   // TODO: Implement this function.
   // UNIMPLEMENTED();
-  len = std::min(len, this->block_sz - offset % this->block_sz);
-  std::memcpy(this->block_data + block_id * this->block_sz + (offset % this->block_sz), data, len);
+  offset %= this->block_sz;
+  len = std::min(len, this->block_sz - offset);
+  std::memcpy(this->block_data + block_id * this->block_sz + offset, data, len);
 
   return KNullOk;
 }
