@@ -155,7 +155,7 @@ auto BlockAllocator::deallocate(block_id_t block_id) -> ChfsNullResult {
     return ChfsNullResult(ErrorType::INVALID_ARG);
   }
   Bitmap(buffer.data(), payload).clear(block_id % total_bits_per_block);
-  bm->write_block(i, buffer.data());
+  bm->write_block(this->bitmap_block_id + i, buffer.data());
 
   return KNullOk;
 }
