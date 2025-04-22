@@ -127,7 +127,7 @@ auto InodeManager::set_table(inode_id_t idx, block_id_t bid) -> ChfsNullResult {
     return ChfsNullResult(ErrorType::INVALID_ARG);
   }
   auto inode_per_block = bm->block_size() / sizeof(block_id_t);
-  bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), (idx % inode_per_block) * sizeof(u64), sizeof(u64));
+  bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), (idx % inode_per_block) * sizeof(block_id_t), sizeof(block_id_t));
 
   return KNullOk;
 }
