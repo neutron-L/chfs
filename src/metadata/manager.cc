@@ -240,18 +240,32 @@ auto InodeManager::free_inode(inode_id_t id) -> ChfsNullResult {
     return ChfsNullResult(ErrorType::INVALID_ARG);
   }
 
+  inode_id_t idx = LOGIC_2_RAW(id);
+  block_id_t bid = KInvalidBlockID;
   // TODO:
   // 1. Clear the inode table entry.
   //    You may have to use macro `LOGIC_2_RAW`
   //    to get the index of inode table from `id`.
+  {
+    auto inode_per_block = bm->block_size() / sizeof(block_id_t);
+    std::vector<block_id_t> buffer(bm->block_size() / sizeof(block_id_t));
+    bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), idx % inode_per_block, sizeof(block_id_t));
+  }
+  
   // 2. Clear the inode bitmap.
-  // UNIMPLEMENTED();
-  inode_id_t idx = LOGIC_2_RAW(id);
-  block_id_t bid = KInvalidBlockID;
-  auto inode_per_block = bm->block_size() / sizeof(block_id_t);
-  std::vector<block_id_t> buffer(bm->block_size() / sizeof(block_id_t));
-  bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), idx % inode_per_block, sizeof(block_id_t));
-
+  {
+    std::vector<u8> buffer(bm->block_size());
+    const auto total_bits_per_block = this->bm->block_size() * KBitsPerByte;
+    const auto i = idx / total_bits_per_block;
+    chfs::usize payload = bm->block_size();
+    bm->read_block(1 + this->n_table_blocks + i, buffer.data());
+    if (!Bitmap(buffer.data(), payload).check(idx % total_bits_per_block)) {
+      return ChfsNullResult(ErrorType::INVALID_ARG);
+    }
+    Bitmap(buffer.data(), payload).clear(idx % total_bits_per_block);
+    bm->write_block(1 + this->n_table_blocks + i, buffer.data());
+  }
+  
   return KNullOk;
 }
 
