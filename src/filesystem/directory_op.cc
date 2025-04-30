@@ -73,7 +73,7 @@ void parse_directory(std::string &src, std::list<DirectoryEntry> &list) {
 
     DirectoryEntry entry;
     entry.name = entry_str.substr(0, colon);
-    std::string id_str = entry_str.substr(colon);
+    std::string id_str = entry_str.substr(colon + 1);
     entry.id = string_to_inode_id(id_str);
     list.push_back(entry);
 
@@ -197,7 +197,7 @@ auto FileOperation::mk_helper(inode_id_t id, const char *name, InodeType type)
     return ChfsResult<inode_id_t>(ret.unwrap_error());
   }
 
-  return ChfsResult<inode_id_t>(static_cast<inode_id_t>(0));
+  return ChfsResult<inode_id_t>(static_cast<inode_id_t>(zid));
 }
 
 // {Your code here}

@@ -130,6 +130,11 @@ public:
   auto get_direct_block_num() const -> u32 { return nblocks - 1; }
 
   /**
+   * Get the number of direct blocks stored in this inode
+   */
+  auto get_block_info_num(u32 sz) const -> u32 { return (block_size - sizeof(Inode)) / sz; }
+
+  /**
    * Determine whether the block ID can be stored directly in the inode
    * @param idx the place of the block ID to store
    */
