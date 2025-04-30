@@ -117,8 +117,12 @@ public:
   auto free_block(block_id_t block_id) -> bool;
 
 private:
+  auto increment_version(block_id_t block_id) ->version_t;
+
   std::unique_ptr<RpcServer> server_;
   std::shared_ptr<BlockAllocator> block_allocator_;
+
+  u32 version_block_cnt{};
 };
 
 } // namespace chfs
