@@ -66,6 +66,11 @@ auto DataServer::read_data(block_id_t block_id, usize offset, usize len,
   // TODO: Implement this function.
   // UNIMPLEMENTED();
   std::vector<u8> buffer(block_allocator_->bm->block_size());
+  
+  if (version != get_version(block_id)) {
+    return {};
+  }
+
   auto res = block_allocator_->bm->read_block(block_id, buffer.data());
   if (res.is_err()) {
     return {};
@@ -86,7 +91,6 @@ auto DataServer::write_data(block_id_t block_id, usize offset,
     len = block_allocator_->bm->block_size() - offset;
   }
   auto res = block_allocator_->bm->write_partial_block(block_id, buffer.data(), offset, len);
-
   return res.is_ok();
 }
 
@@ -104,8 +108,8 @@ auto DataServer::alloc_block() -> std::pair<block_id_t, version_t> {
   bid = res.unwrap();
 
   // 递增版本号
-  version = increment_version(bid);
-  assert(version > 0);
+  assert(increment_version(bid, 1) == true);
+  version = get_version(bid);
 
   return {bid, version};
 }
@@ -118,22 +122,31 @@ auto DataServer::free_block(block_id_t block_id) -> bool {
   if (res.is_err()) {
     return false;
   }
-  (void)increment_version(block_id);
+  if (increment_version(block_id, 1) == false) {
+    return false;
+  }
 
   return true;
 }
 
-auto DataServer::increment_version(block_id_t block_id) -> version_t {
-  version_t version = 0;
+auto DataServer::increment_version(block_id_t block_id, int delta) ->bool {
+  std::vector<version_t> buffer(block_allocator_->bm->block_size() / sizeof(version_t));
+  if (block_allocator_->bm->read_block(block_id / (block_allocator_->bm->block_size() / sizeof(version_t)), reinterpret_cast<u8*>(buffer.data())).is_err()) {
+    return false;
+  }
+  buffer[block_id % (block_allocator_->bm->block_size() / sizeof(version_t))] += delta;
+  if (block_allocator_->bm->write_block(block_id / (block_allocator_->bm->block_size() / sizeof(version_t)), reinterpret_cast<u8*>(buffer.data())).is_err()) {
+    return false;
+  }
+  return true;
+}
 
+
+auto DataServer::get_version(block_id_t block_id) -> version_t {
   std::vector<version_t> buffer(block_allocator_->bm->block_size() / sizeof(version_t));
   if (block_allocator_->bm->read_block(block_id / (block_allocator_->bm->block_size() / sizeof(version_t)), reinterpret_cast<u8*>(buffer.data())).is_err()) {
     return 0;
   }
-  version = ++buffer[block_id % (block_allocator_->bm->block_size() / sizeof(version_t))];
-  if (block_allocator_->bm->write_block(block_id / (block_allocator_->bm->block_size() / sizeof(version_t)), reinterpret_cast<u8*>(buffer.data())).is_err()) {
-    return 0;
-  }
-  return version;
+  return buffer[block_id % (block_allocator_->bm->block_size() / sizeof(version_t))];
 }
 } // namespace chfs

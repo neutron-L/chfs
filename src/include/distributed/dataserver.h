@@ -117,7 +117,23 @@ public:
   auto free_block(block_id_t block_id) -> bool;
 
 private:
-  auto increment_version(block_id_t block_id) ->version_t;
+  /**
+   * 自定义的一个方法操作块的版本号
+   *
+   * @param block_id: The block id.
+   * 
+   * @param delta: 版本变化量，目前仅需要用到1和0
+   */
+  auto increment_version(block_id_t block_id, int delta) -> bool;
+
+  /**
+   * 获取块的版本号
+   *
+   * @param block_id: The block id.
+   * 
+   * @return: 版本号
+   */
+  auto get_version(block_id_t block_id) -> version_t;
 
   std::unique_ptr<RpcServer> server_;
   std::shared_ptr<BlockAllocator> block_allocator_;

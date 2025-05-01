@@ -142,6 +142,9 @@ private:
   std::shared_ptr<RpcClient>
       metadata_server_; // Currently only one metadata server
   mac_id_t num_data_servers;
+
+  /* 自定义的变量 */
+  static const usize BLOCK_SIZE = 4096; // 和dataserver相同，使用默认块大小
 };
 
 } // namespace chfs

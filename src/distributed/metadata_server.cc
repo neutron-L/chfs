@@ -5,6 +5,9 @@
 
 namespace chfs {
 
+// 定义在src/filesystem/data_op.c
+u64 calculate_block_sz(u64 file_sz, u64 block_sz);
+
 inline auto MetadataServer::bind_handlers() {
   server_->bind("mknode",
                 [this](u8 type, inode_id_t parent, std::string const &name) {
@@ -158,6 +161,7 @@ auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
   for (const auto & info : file_block_vec) {
     clients_[std::get<1>(info)]->call("free_block", std::get<0>(info));
   }
+  operation_->block_allocator_->deallocate(lookup_res.unwrap());
   auto read_res = operation_->read_file(parent);
   if (read_res.is_err()) {
     return false;
@@ -208,17 +212,14 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   std::vector<u8> buffer(operation_->block_manager_->block_size());
   auto read_res = operation_->inode_manager_->read_inode(id, buffer);
   if (read_res.is_err()) {
-    return {};
+    return {KInvalidBlockID, 0, 0};
   }
   Inode * inode_p = reinterpret_cast<Inode *>(buffer.data());
   BlockInfo * blockInfo_p = reinterpret_cast<BlockInfo *>(inode_p->blocks);
   auto n = inode_p->get_block_info_num(sizeof(BlockInfo));
-  int i = 0;
-  while (i < n && std::get<0>(blockInfo_p[i]) != KInvalidBlockID) {
-    ++i;
-  }
+  int i = calculate_block_sz(inode_p->get_size(), operation_->block_manager_->block_size());
   if (i == n) {
-    return {};
+    return {KInvalidBlockID, 0, 0};
   }
 
   // 选择一个data server 
@@ -227,14 +228,17 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   auto cli = iter->second;
   auto alloc_res = cli->call("alloc_block");
   if (alloc_res.is_err()) {
-    return {};
+    return {KInvalidBlockID, 0, 0};
   }
   auto [block_id, version] =
       alloc_res.unwrap()->as<std::pair<block_id_t, version_t>>();
+  inode_p->set_size(inode_p->get_size() + operation_->block_manager_->block_size());
   blockInfo_p[i] = {block_id, iter->first, version};
   auto wb_res = operation_->block_manager_->write_block(read_res.unwrap(), buffer.data());
   if (wb_res.is_err()) {
-    return {};
+    // 释放块
+    cli->call("free_block", block_id);
+    return {KInvalidBlockID, 0, 0};
   }
   return {block_id, iter->first, version};
 }
@@ -244,9 +248,32 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
 auto MetadataServer::free_block(inode_id_t id, block_id_t block_id,
                                 mac_id_t machine_id) -> bool {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  std::vector<u8> buffer(operation_->block_manager_->block_size());
+  auto read_res = operation_->inode_manager_->read_inode(id, buffer);
+  if (read_res.is_err()) {
+    return false;
+  }
+  Inode * inode_p = reinterpret_cast<Inode *>(buffer.data());
+  BlockInfo * blockInfo_p = reinterpret_cast<BlockInfo *>(inode_p->blocks);
+  
+  auto n = calculate_block_sz(inode_p->get_size(), operation_->block_manager_->block_size());
+  decltype(n) i = 0;
+  while (i < n && !(std::get<0>(blockInfo_p[i]) == block_id && std::get<1>(blockInfo_p[i]) == machine_id)) {
+    ++i;
+  }
+  if (i == n) {
+    return false;
+  }
+  auto &[bid, mid, v] = blockInfo_p[i];
+  bid = KInvalidBlockID;
+  mid = v = 0;
+  // 更新文件大小
+  if (i == n - 1) {
+    inode_p->set_size(inode_p->get_size() - operation_->block_manager_->block_size());
+  }
 
-  return false;
+  return true;
 }
 
 // {Your code here}
@@ -274,9 +301,16 @@ auto MetadataServer::readdir(inode_id_t node)
 auto MetadataServer::get_type_attr(inode_id_t id)
     -> std::tuple<u64, u64, u64, u64, u8> {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
-
-  return {};
+  // UNIMPLEMENTED();
+  auto res = operation_->get_type_attr(id);
+  if (res.is_err()) {
+    return {};
+  }
+  auto [type, attr] = res.unwrap();
+  if (type == InodeType::Unknown) {
+    return {};
+  }
+  return std::tuple<u64, u64, u64, u64, u8>(attr.size, attr.atime, attr.mtime, attr.ctime, static_cast<u8>(type == InodeType::FILE ? RegularFileType : DirectoryType));
 }
 
 auto MetadataServer::reg_server(const std::string &address, u16 port,
@@ -297,5 +331,4 @@ auto MetadataServer::run() -> bool {
   running = true;
   return true;
 }
-
 } // namespace chfs
