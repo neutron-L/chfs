@@ -249,7 +249,7 @@ auto InodeManager::free_inode(inode_id_t id) -> ChfsNullResult {
   {
     auto inode_per_block = bm->block_size() / sizeof(block_id_t);
     std::vector<block_id_t> buffer(bm->block_size() / sizeof(block_id_t));
-    bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), idx % inode_per_block, sizeof(block_id_t));
+    bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), (idx % inode_per_block) * sizeof(block_id_t), sizeof(block_id_t));
   }
   
   // 2. Clear the inode bitmap.
