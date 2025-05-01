@@ -228,6 +228,11 @@ public:
     this->blocks[this->nblocks - 1] = KInvalidBlockID;
   }
 
+  /**
+   * Set the file size
+   */
+  void set_size(u64 size) { inner_attr.size = size; }
+
   auto begin() -> InodeIterator;
   auto end() -> InodeIterator;
 
