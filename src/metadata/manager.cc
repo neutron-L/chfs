@@ -101,7 +101,7 @@ auto InodeManager::allocate_inode(InodeType type, block_id_t bid)
       //    You may have to use the `RAW_2_LOGIC` macro
       //    to get the result inode id.
       // UNIMPLEMENTED();
-      inode_id_t idx = count * bm->block_size() + free_idx.value();
+      inode_id_t idx = count * bm->block_size() * KBitsPerByte + free_idx.value();
       std::vector<u8> buffer(bm->block_size());
 
       Inode inode = {type, bm->block_size()};
@@ -249,7 +249,7 @@ auto InodeManager::free_inode(inode_id_t id) -> ChfsNullResult {
   {
     auto inode_per_block = bm->block_size() / sizeof(block_id_t);
     std::vector<block_id_t> buffer(bm->block_size() / sizeof(block_id_t));
-    bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), idx % inode_per_block, sizeof(block_id_t));
+    bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), (idx % inode_per_block) * sizeof(block_id_t), sizeof(block_id_t));
   }
   
   // 2. Clear the inode bitmap.
