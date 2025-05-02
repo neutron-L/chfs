@@ -101,7 +101,7 @@ auto InodeManager::allocate_inode(InodeType type, block_id_t bid)
       //    You may have to use the `RAW_2_LOGIC` macro
       //    to get the result inode id.
       // UNIMPLEMENTED();
-      inode_id_t idx = count * bm->block_size() + free_idx.value();
+      inode_id_t idx = count * bm->block_size() * KBitsPerByte + free_idx.value();
       std::vector<u8> buffer(bm->block_size());
 
       Inode inode = {type, bm->block_size()};
