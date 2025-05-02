@@ -143,15 +143,6 @@ auto MetadataServer::mknode(u8 type, inode_id_t parent, const std::string &name)
   if (res.is_err()) {
     return KInvalidInodeID;
   }
-  std::vector<u8> inode(4096);
-
-  [[maybe_unused]]auto inode_p = reinterpret_cast<Inode *>(inode.data());
-  auto inode_res = operation_->inode_manager_->read_inode(res.unwrap(), inode);
-  if (inode_res.is_err()) {
-    inode_res = operation_->inode_manager_->read_inode(res.unwrap(), inode);
-    assert(false);
-  }
-
   return res.unwrap();
 }
 
@@ -238,7 +229,6 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   std::vector<u8> buffer(operation_->block_manager_->block_size());
   auto read_res = operation_->inode_manager_->read_inode(id, buffer);
   if (read_res.is_err()) {
-    std::cout << "read id error " << std::endl;
     return {KInvalidBlockID, 0, 0};
   }
   Inode * inode_p = reinterpret_cast<Inode *>(buffer.data());
@@ -246,7 +236,6 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   auto n = inode_p->get_block_info_num(sizeof(BlockInfo));
   int i = calculate_block_sz(inode_p->get_size(), operation_->block_manager_->block_size());
   if (i == n) {
-    std::cout << "i = n: " << inode_p->get_size() << ' ' << n << std::endl;
     return {KInvalidBlockID, 0, 0};
   }
 
@@ -256,7 +245,6 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   auto cli = iter->second;
   auto alloc_res = cli->call("alloc_block");
   if (alloc_res.is_err()) {
-    std::cout << "alloc error " << std::endl;
     return {KInvalidBlockID, 0, 0};
   }
   auto [block_id, version] =
