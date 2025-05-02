@@ -138,12 +138,20 @@ auto MetadataServer::mknode(u8 type, inode_id_t parent, const std::string &name)
     return KInvalidInodeID;
   }
 
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
   auto res = operation_->mk_helper(parent, name.c_str(), itype);
   if (res.is_err()) {
     return KInvalidInodeID;
   }
-  auto f = operation_->lookup(parent, name.c_str());
-  assert (f.unwrap() != 0);
+  std::vector<u8> inode(4096);
+
+  [[maybe_unused]]auto inode_p = reinterpret_cast<Inode *>(inode.data());
+  auto inode_res = operation_->inode_manager_->read_inode(res.unwrap(), inode);
+  if (inode_res.is_err()) {
+    inode_res = operation_->inode_manager_->read_inode(res.unwrap(), inode);
+    assert(false);
+  }
+
   return res.unwrap();
 }
 
@@ -152,17 +160,32 @@ auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
     -> bool {
   // TODO: Implement this function.
   // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
   auto lookup_res = operation_->lookup(parent, name.c_str());
   if (lookup_res.is_err()) {
     return false;
   }
-  operation_->inode_manager_->free_inode(lookup_res.unwrap());
-  auto file_block_vec = get_block_map(lookup_res.unwrap());
+  inode_id_t id = lookup_res.unwrap();
+  auto read_res = operation_->read_file(parent);
+  if (read_res.is_err()) {
+    return false;
+  }
+  
+  auto file_block_vec = get_block_map(id);
+  read_res = operation_->read_file(parent);
+  if (read_res.is_err()) {
+    return false;
+  }
   for (const auto & info : file_block_vec) {
     clients_[std::get<1>(info)]->call("free_block", std::get<0>(info));
   }
-  operation_->block_allocator_->deallocate(lookup_res.unwrap());
-  auto read_res = operation_->read_file(parent);
+ 
+  auto block_id = operation_->inode_manager_->get(id);
+  assert(block_id.is_ok());
+  operation_->block_allocator_->deallocate(block_id.unwrap());
+  operation_->inode_manager_->free_inode(id);
+
+  read_res = operation_->read_file(parent);
   if (read_res.is_err()) {
     return false;
   }
@@ -179,6 +202,7 @@ auto MetadataServer::lookup(inode_id_t parent, const std::string &name)
     -> inode_id_t {
   // TODO: Implement this function.
   // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
   auto res = operation_->lookup(parent, name.c_str());
   if (res.is_err()) {
     return KInvalidInodeID;
@@ -190,6 +214,7 @@ auto MetadataServer::lookup(inode_id_t parent, const std::string &name)
 auto MetadataServer::get_block_map(inode_id_t id) -> std::vector<BlockInfo> {
   // TODO: Implement this function.
   // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
   std::vector<BlockInfo> blockInfo;
   std::vector<u8> buffer(operation_->block_manager_->block_size());
   auto res = operation_->inode_manager_->read_inode(id, buffer);
@@ -198,7 +223,7 @@ auto MetadataServer::get_block_map(inode_id_t id) -> std::vector<BlockInfo> {
   }
   Inode * inode_p = reinterpret_cast<Inode *>(buffer.data());
   BlockInfo * blockInfo_p = reinterpret_cast<BlockInfo *>(inode_p->blocks);
-  auto n = inode_p->get_block_info_num(sizeof(BlockInfo));
+  auto n = calculate_block_sz(inode_p->get_size(), operation_->block_manager_->block_size());
   for (int i = 0; i < n && std::get<0>(blockInfo_p[i]) != KInvalidBlockID; ++i) {
     blockInfo.push_back(blockInfo_p[i]);
   }
@@ -209,9 +234,11 @@ auto MetadataServer::get_block_map(inode_id_t id) -> std::vector<BlockInfo> {
 auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   // TODO: Implement this function.
   // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
   std::vector<u8> buffer(operation_->block_manager_->block_size());
   auto read_res = operation_->inode_manager_->read_inode(id, buffer);
   if (read_res.is_err()) {
+    std::cout << "read id error " << std::endl;
     return {KInvalidBlockID, 0, 0};
   }
   Inode * inode_p = reinterpret_cast<Inode *>(buffer.data());
@@ -219,6 +246,7 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   auto n = inode_p->get_block_info_num(sizeof(BlockInfo));
   int i = calculate_block_sz(inode_p->get_size(), operation_->block_manager_->block_size());
   if (i == n) {
+    std::cout << "i = n: " << inode_p->get_size() << ' ' << n << std::endl;
     return {KInvalidBlockID, 0, 0};
   }
 
@@ -228,6 +256,7 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   auto cli = iter->second;
   auto alloc_res = cli->call("alloc_block");
   if (alloc_res.is_err()) {
+    std::cout << "alloc error " << std::endl;
     return {KInvalidBlockID, 0, 0};
   }
   auto [block_id, version] =
@@ -249,6 +278,8 @@ auto MetadataServer::free_block(inode_id_t id, block_id_t block_id,
                                 mac_id_t machine_id) -> bool {
   // TODO: Implement this function.
   // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
+
   std::vector<u8> buffer(operation_->block_manager_->block_size());
   auto read_res = operation_->inode_manager_->read_inode(id, buffer);
   if (read_res.is_err()) {
@@ -265,12 +296,21 @@ auto MetadataServer::free_block(inode_id_t id, block_id_t block_id,
   if (i == n) {
     return false;
   }
-  auto &[bid, mid, v] = blockInfo_p[i];
-  bid = KInvalidBlockID;
-  mid = v = 0;
+  // what fuck!!
+  // operation_->block_allocator_->deallocate(block_id);
+  auto res = clients_[machine_id]->call("free_block", block_id);
+  if (res.is_err() || res.unwrap()->as<bool>() == false) {
+    std::cout << "free " << block_id << " failed\n";
+  }
   // 更新文件大小
-  if (i == n - 1) {
-    inode_p->set_size(inode_p->get_size() - operation_->block_manager_->block_size());
+  // 貌似必须紧缩文件，否则无法通过测试
+  // 但是除了测试程序没有其他地方使用了这个接口
+  std::memmove(blockInfo_p + i, blockInfo_p + i + 1, (n - i - 1) * sizeof(BlockInfo));
+  inode_p->set_size(inode_p->get_size() - operation_->block_manager_->block_size());
+
+  auto wb_res = operation_->block_manager_->write_block(read_res.unwrap(), buffer.data());
+  if (wb_res.is_err()) {
+    return false;
   }
 
   return true;
@@ -281,6 +321,7 @@ auto MetadataServer::readdir(inode_id_t node)
     -> std::vector<std::pair<std::string, inode_id_t>> {
   // TODO: Implement this function.
   // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
   auto read_res = operation_->read_file(node);
   if (read_res.is_err()) {
     return {};
@@ -302,6 +343,7 @@ auto MetadataServer::get_type_attr(inode_id_t id)
     -> std::tuple<u64, u64, u64, u64, u8> {
   // TODO: Implement this function.
   // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
   auto res = operation_->get_type_attr(id);
   if (res.is_err()) {
     return {};

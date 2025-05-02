@@ -245,6 +245,7 @@ private:
   /**
    * {You can add anything you want here}
    */
+  std::recursive_mutex rmtx{};
 };
 
 } // namespace chfs

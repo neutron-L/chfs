@@ -32,6 +32,7 @@ auto ChfsClient::mknode(FileType type, inode_id_t parent,
   // TODO: Implement this function.
   // UNIMPLEMENTED();
   u8 arg_type;
+  inode_id_t id = KInvalidInodeID;
   
   if (type == FileType::REGULAR) {
     arg_type = RegularFileType;
@@ -44,7 +45,11 @@ auto ChfsClient::mknode(FileType type, inode_id_t parent,
   if (res.is_err()) {
     return ChfsResult<inode_id_t>(res.unwrap_error());
   } 
-  return ChfsResult<inode_id_t>(res.unwrap()->as<inode_id_t>());
+  id = res.unwrap()->as<inode_id_t>();
+  if (id == KInvalidInodeID) {
+    return ChfsResult<inode_id_t>(ErrorType::DONE);
+  }
+  return ChfsResult<inode_id_t>(id);
 }
 
 // {Your code here}
