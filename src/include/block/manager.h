@@ -88,10 +88,25 @@ public:
       -> ChfsNullResult;
 
   /**
+   * Write a block to the internal block device.  This is a write-through one,
+   * i.e., no cache. And it must be successful, temporarily ignore maybe_failed.
+   * @param block_id id of the block
+   * @param block_data raw block data
+   */
+  virtual void write_block_safe(block_id_t block_id, const u8 *block_data);
+
+  /**
    * Write a partial block to the internal block device.
    */
   virtual auto write_partial_block(block_id_t block_id, const u8 *block_data,
                                    usize offset, usize len) -> ChfsNullResult;
+
+   /**
+   * Write a partial block to the internal block device.
+   * And it must be successful, temporarily ignore maybe_failed.
+   */
+  virtual void write_partial_block_safe(block_id_t block_id, const u8 *block_data,
+                                   usize offset, usize len);
 
   /**
    * Read a block to the internal block device.

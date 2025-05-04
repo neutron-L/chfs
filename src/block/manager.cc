@@ -102,6 +102,15 @@ auto BlockManager::write_block(block_id_t block_id, const u8 *data)
   return KNullOk;
 }
 
+void BlockManager::write_block_safe(block_id_t block_id, const u8 *block_data) {
+  do {
+    auto res = write_block(block_id, block_data);
+    if (res.is_ok()) {
+      break;
+    }
+  } while (true);
+}
+
 auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
                                        usize offset, usize len)
     -> ChfsNullResult {
@@ -120,6 +129,17 @@ auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
   this->write_fail_cnt++;
 
   return KNullOk;
+}
+
+
+void BlockManager::write_partial_block_safe(block_id_t block_id, const u8 *data,
+                                       usize offset, usize len) {
+  do {
+    auto res = write_partial_block(block_id, data, offset, len);
+    if (res.is_ok()) {
+      break;
+    }
+  } while (true);
 }
 
 auto BlockManager::read_block(block_id_t block_id, u8 *data) -> ChfsNullResult {
