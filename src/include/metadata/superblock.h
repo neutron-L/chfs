@@ -28,6 +28,10 @@ typedef struct SuperBlockInternal {
   u64 ninodes;
   // The current filesystem size.
   u64 file_system_size;
+
+  /* 自定义两个log元数据信息,仅commit_log更新 */
+  u64 log_entry_offset;
+  u64 log_update_block_offset;
 } SuperblockInternal;
 
 /**
@@ -40,6 +44,7 @@ typedef struct SuperBlockInternal {
  * It follows the inode filesystem described in the class
  */
 class SuperBlock {
+  friend class CommitLog;
   std::shared_ptr<BlockManager> bm;
   SuperBlockInternal inner;
 
