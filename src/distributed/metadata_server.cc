@@ -139,10 +139,15 @@ auto MetadataServer::mknode(u8 type, inode_id_t parent, const std::string &name)
   }
 
   std::lock_guard<std::recursive_mutex> lock(rmtx);
+  tranx_begin();
   auto res = operation_->mk_helper(parent, name.c_str(), itype);
   if (res.is_err()) {
+    tranx_abort();
     return KInvalidInodeID;
   }
+
+  tranx_end();
+
   return res.unwrap();
 }
 
@@ -152,19 +157,23 @@ auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
   // TODO: Implement this function.
   // UNIMPLEMENTED();
   std::lock_guard<std::recursive_mutex> lock(rmtx);
+  tranx_begin();
   auto lookup_res = operation_->lookup(parent, name.c_str());
   if (lookup_res.is_err()) {
+    tranx_abort();
     return false;
   }
   inode_id_t id = lookup_res.unwrap();
   auto read_res = operation_->read_file(parent);
   if (read_res.is_err()) {
+    tranx_abort();
     return false;
   }
   
   auto file_block_vec = get_block_map(id);
   read_res = operation_->read_file(parent);
   if (read_res.is_err()) {
+    tranx_abort();
     return false;
   }
   for (const auto & info : file_block_vec) {
@@ -178,6 +187,7 @@ auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
 
   read_res = operation_->read_file(parent);
   if (read_res.is_err()) {
+    tranx_abort();
     return false;
   }
   auto src = std::string(reinterpret_cast<char *>(read_res.unwrap().data()), read_res.unwrap().size());
@@ -185,7 +195,13 @@ auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
   std::vector<u8> buffer(src.length());
   memcpy(buffer.data(), src.c_str(), src.length());
 
-  return operation_->write_file(parent, buffer).is_ok();
+  auto write_res = operation_->write_file(parent, buffer);
+  if (write_res.is_err()) {
+    tranx_abort();
+  }
+  tranx_end();
+
+  return true;
 }
 
 // {Your code here}
@@ -335,6 +351,31 @@ auto MetadataServer::get_type_attr(inode_id_t id)
   }
   return std::tuple<u64, u64, u64, u64, u8>(attr.size, attr.atime, attr.mtime, attr.ctime, static_cast<u8>(type == InodeType::FILE ? RegularFileType : DirectoryType));
 }
+
+void MetadataServer::tranx_begin() {
+  if (is_log_enabled_) {
+    operation_->block_manager_->start_transaction();
+  }
+}
+
+void MetadataServer::tranx_abort() {
+  // assert(false); // 目前应该不会出现这种情况
+}
+
+
+void MetadataServer::tranx_end() {
+  if (is_log_enabled_) {
+    txn_id_t xid = commit_log->get_txn_id();
+    auto ops_dict = operation_->block_manager_->retrieve_updated_block();
+    std::vector<std::shared_ptr<BlockOperation>> ops;
+    for (auto & [bid, vec] : ops_dict) {
+      ops.push_back(std::make_shared<BlockOperation>(bid, vec));
+    }
+    commit_log->append_log(xid, ops);
+    commit_log->commit_log(xid);
+  }
+}
+
 
 auto MetadataServer::reg_server(const std::string &address, u16 port,
                                 bool reliable) -> bool {
