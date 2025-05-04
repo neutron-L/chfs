@@ -12,11 +12,12 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
 
 #include "common/config.h"
 #include "common/macros.h"
 #include "common/result.h"
-
+#include "distributed/commit_log.h"
 namespace chfs {
 // TODO
 
@@ -40,6 +41,9 @@ protected:
   bool maybe_failed;
   usize write_fail_cnt;
 
+  /* log支持，跟踪写入的块信息 */
+  bool is_log_enabled;
+  std::unordered_map<block_id_t, std::shared_ptr<BlockOperation>> ops;
 public:
   /**
    * Creates a new block manager that writes to a file-backed block device.
@@ -157,6 +161,10 @@ public:
   auto set_may_fail(bool may_fail) -> void {
     this->maybe_failed = may_fail;
   }
+  /**
+   * 每次执行完一个事务，commit log调用该方法取走事务更新的块
+   */
+  auto retrieve_updated_block() -> std::vector<std::shared_ptr<BlockOperation>>;
 };
 
 /**

@@ -96,6 +96,18 @@ auto BlockManager::write_block(block_id_t block_id, const u8 *data)
 
   // TODO: Implement this function.
   // UNIMPLEMENTED();
+  if (is_log_enabled) {
+    for (usize i = 0; i < this->block_sz; ++i) {
+      if ((this->block_data + block_id * this->block_sz)[i] != data[i]) {
+        if (!ops.count(block_id)) {
+          ops[block_id] = std::make_shared<BlockOperation>(block_id, std::vector<u8>(this->block_sz));
+        }
+        std::memcpy(ops[block_id]->new_block_state_.data(), data, this->block_sz);
+        break;
+      }
+    }
+  }
+  
   std::memcpy(this->block_data + block_id * this->block_sz, data, this->block_sz);
   this->write_fail_cnt++;
 
@@ -125,6 +137,18 @@ auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
   // UNIMPLEMENTED();
   offset %= this->block_sz;
   len = std::min(len, this->block_sz - offset);
+  if (is_log_enabled) {
+    for (usize i = offset; i < offset + len; ++i) {
+      if ((this->block_data + block_id * this->block_sz)[i] != data[i]) {
+        if (!ops.count(block_id)) {
+          ops[block_id] = std::make_shared<BlockOperation>(block_id, std::vector<u8>(this->block_sz));
+        }
+        std::memcpy(ops[block_id]->new_block_state_.data(), data, this->block_sz);
+        break;
+      }
+    }
+  }
+  
   std::memcpy(this->block_data + block_id * this->block_sz + offset, data, len);
   this->write_fail_cnt++;
 
@@ -180,6 +204,18 @@ auto BlockManager::flush() -> ChfsNullResult {
     return ChfsNullResult(ErrorType::INVALID);
   return KNullOk;
 }
+
+auto BlockManager::retrieve_updated_block() -> std::vector<std::shared_ptr<BlockOperation>> {
+  std::vector<std::shared_ptr<BlockOperation>> res;
+  res.reserve(ops.size());
+
+  for (auto & [_, op] : ops) {
+    res.push_back(op);
+  }
+  ops.clear(); // 清空，以免污染下一个事务
+  return res;
+}
+
 
 BlockManager::~BlockManager() {
   if (!this->in_memory) {
