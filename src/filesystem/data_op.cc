@@ -208,7 +208,7 @@ auto FileOperation::write_file(inode_id_t id, const std::vector<u8> &content)
       // TODO: Write to current block.
       // UNIMPLEMENTED();
       assert (bid != KInvalidBlockID);
-      block_manager_->write_block(bid, buffer.data());
+      block_manager_->write_block_safe(bid, buffer.data());
 
       write_sz += sz;
       block_idx += 1;
@@ -219,14 +219,14 @@ auto FileOperation::write_file(inode_id_t id, const std::vector<u8> &content)
   {
     inode_p->inner_attr.set_all_time(time(0));
 
-    auto write_res =
-        this->block_manager_->write_block(inode_res.unwrap(), inode.data());
-    if (write_res.is_err()) {
-      error_code = write_res.unwrap_error();
-      goto err_ret;
-    }
+    // auto write_res =
+        this->block_manager_->write_block_safe(inode_res.unwrap(), inode.data());
+    // if (write_res.is_err()) {
+      // error_code = write_res.unwrap_error();
+      // goto err_ret;
+    // }
     if (indirect_block.size() != 0) {
-      write_res =
+      auto write_res =
           inode_p->write_indirect_block(this->block_manager_, indirect_block);
       if (write_res.is_err()) {
         error_code = write_res.unwrap_error();

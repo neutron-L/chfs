@@ -106,7 +106,7 @@ auto InodeManager::allocate_inode(InodeType type, block_id_t bid)
 
       Inode inode = {type, bm->block_size()};
       inode.flush_to_buffer(buffer.data());
-      bm->write_block(bid, buffer.data());
+      bm->write_block_safe(bid, buffer.data());
       set_table(idx, bid);
       
       return RAW_2_LOGIC(idx);
@@ -263,7 +263,7 @@ auto InodeManager::free_inode(inode_id_t id) -> ChfsNullResult {
       return ChfsNullResult(ErrorType::INVALID_ARG);
     }
     Bitmap(buffer.data(), payload).clear(idx % total_bits_per_block);
-    bm->write_block(1 + this->n_table_blocks + i, buffer.data());
+    bm->write_block_safe(1 + this->n_table_blocks + i, buffer.data());
   }
   
   return KNullOk;

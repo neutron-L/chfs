@@ -251,12 +251,8 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
       alloc_res.unwrap()->as<std::pair<block_id_t, version_t>>();
   inode_p->set_size(inode_p->get_size() + operation_->block_manager_->block_size());
   blockInfo_p[i] = {block_id, iter->first, version};
-  auto wb_res = operation_->block_manager_->write_block(read_res.unwrap(), buffer.data());
-  if (wb_res.is_err()) {
-    // 释放块
-    cli->call("free_block", block_id);
-    return {KInvalidBlockID, 0, 0};
-  }
+  operation_->block_manager_->write_block_safe(read_res.unwrap(), buffer.data());
+
   return {block_id, iter->first, version};
 }
 
@@ -296,10 +292,7 @@ auto MetadataServer::free_block(inode_id_t id, block_id_t block_id,
   std::memmove(blockInfo_p + i, blockInfo_p + i + 1, (n - i - 1) * sizeof(BlockInfo));
   inode_p->set_size(inode_p->get_size() - operation_->block_manager_->block_size());
 
-  auto wb_res = operation_->block_manager_->write_block(read_res.unwrap(), buffer.data());
-  if (wb_res.is_err()) {
-    return false;
-  }
+  operation_->block_manager_->write_block_safe(read_res.unwrap(), buffer.data());
 
   return true;
 }
