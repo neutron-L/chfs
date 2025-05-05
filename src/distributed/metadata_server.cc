@@ -359,7 +359,9 @@ void MetadataServer::tranx_begin() {
 }
 
 void MetadataServer::tranx_abort() {
-  // assert(false); // 目前应该不会出现这种情况
+  if (is_log_enabled_) {
+    assert(false); // 目前应该不会出现这种情况
+  }
 }
 
 
@@ -368,8 +370,8 @@ void MetadataServer::tranx_end() {
     txn_id_t xid = commit_log->get_txn_id();
     auto ops_dict = operation_->block_manager_->retrieve_updated_block();
     std::vector<std::shared_ptr<BlockOperation>> ops;
-    for (auto & [bid, vec] : ops_dict) {
-      ops.push_back(std::make_shared<BlockOperation>(bid, vec));
+    for (auto & [bid, buffer] : ops_dict) {
+      ops.push_back(std::make_shared<BlockOperation>(bid, std::vector<u8>{buffer, buffer + operation_->block_manager_->block_size()}));
     }
     commit_log->append_log(xid, ops);
     commit_log->commit_log(xid);

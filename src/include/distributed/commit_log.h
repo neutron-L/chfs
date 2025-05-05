@@ -55,8 +55,6 @@ protected:
     block_id_t update_block_end;
     block_id_t update_blocks[0];
   };
-  static const u64 TOT_LOG_REGION_BLOCK = 1024u;
-  static const u64 LOG_ENTRY_ARR_SIZE = 4096u;
 
 public:
   explicit CommitLog(std::shared_ptr<BlockManager> bm,
@@ -76,12 +74,17 @@ public:
     return next_txn_id_.fetch_add(1);
   }
 
+  /**
+   * 写入log entry
+   */
+  void write_log_entry(txn_id_t);
+
   bool is_checkpoint_enabled_;
   std::shared_ptr<BlockManager> bm_;
   /**
    * {Append anything if you need}
    */
-  std::shared_ptr<SuperBlock> super_block_;
+  std::shared_ptr<SuperBlock> superblock_;
   usize log_entry_num_{}; // 磁盘上事务数
   std::atomic<txn_id_t> next_txn_id_{};
   using block_op_array = std::vector<std::shared_ptr<BlockOperation>>;

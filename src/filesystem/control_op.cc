@@ -31,6 +31,9 @@ auto FileOperation::create_from_raw(std::shared_ptr<BlockManager> bm)
   }
 
   auto reserved_block_num = inode_manager_res.unwrap().get_reserved_blocks();
+  if (bm->enable_log()) {
+    reserved_block_num += kMaxLogBlockSize;
+  }
   return ChfsResult<std::shared_ptr<FileOperation>>(
       std::shared_ptr<FileOperation>(new FileOperation(
           bm, InodeManager::to_shared_ptr(inode_manager_res.unwrap()),

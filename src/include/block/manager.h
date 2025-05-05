@@ -44,7 +44,7 @@ protected:
   /* log支持，跟踪写入的块信息 */
   bool start_log{false};
   bool is_log_enabled;
-  std::unordered_map<block_id_t, std::vector<u8>> ops_dict;
+  std::unordered_map<block_id_t, u8 *> ops_dict{};
 public:
   /**
    * Creates a new block manager that writes to a file-backed block device.
@@ -171,7 +171,9 @@ public:
   /**
    * 每次执行完一个事务，commit log调用该方法取走事务更新的块
    */
-  auto retrieve_updated_block() -> std::unordered_map<block_id_t, std::vector<u8>>;
+  auto retrieve_updated_block() -> std::unordered_map<block_id_t, u8*>;
+
+  auto enable_log() -> bool { return is_log_enabled; }
 };
 
 /**
