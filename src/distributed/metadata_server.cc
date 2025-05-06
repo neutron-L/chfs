@@ -87,7 +87,6 @@ inline auto MetadataServer::init_fs(const std::string &data_path) {
                                              is_checkpoint_enabled_);
     commit_log->set_log_start(operation_->inode_manager_->get_reserved_blocks());
   }
-
   bind_handlers();
 
   /**
@@ -135,7 +134,11 @@ auto MetadataServer::mknode(u8 type, inode_id_t parent, const std::string &name)
   tranx_begin();
   auto res = operation_->mk_helper(parent, name.c_str(), itype);
   if (res.is_err()) {
-    tranx_abort();
+    if (res.unwrap_error() != ErrorType::INVALID) {
+      tranx_abort();
+    } else {
+      tranx_end();
+    }
     return KInvalidInodeID;
   }
 
