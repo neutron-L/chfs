@@ -9,9 +9,9 @@ src/include/meta/manager.h记录了manager管理inode后的磁盘块分布.
 ```txt
 | Super block | Inode Table   | Inode allocation bitmap | Block allocation bitmap ... |  Other data blocks   |  
 ```
-将log占用的磁盘块放置在super block中，且管理log需要的元数据信息存放在super block中.  
+将log占用的磁盘块放置在Inode allocation bitmap后，且管理log需要的元数据信息存放在super block中.前者的设计是为了避免修改inode manager中的偏移计算（代码中硬编码了1，即superblock在inode区域之前），这样仅需要修改块的空闲位图的id计算    
 ```txt
-| Super block | Log region |Inode Table   | Inode allocation bitmap | Block allocation bitmap ... |  Other data blocks   |  
+| Super block |Inode Table   | Inode allocation bitmap | Log region | Block allocation bitmap ... |  Other data blocks   |  
 ```
 实验描述和代码中的一些全局变量不太符合，比如:  
 - 8MB的文件、块大小为4KB，默认的总块数应该是2K，但是代码中却是4K.但是遵循代码的实现，默认文件大小为16MB，总块数为4K
