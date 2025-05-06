@@ -85,6 +85,7 @@ inline auto MetadataServer::init_fs(const std::string &data_path) {
       operation_->block_manager_->set_may_fail(true);
     commit_log = std::make_shared<CommitLog>(operation_->block_manager_,
                                              is_checkpoint_enabled_);
+    commit_log->set_log_start(operation_->inode_manager_->get_reserved_blocks());
   }
 
   bind_handlers();
@@ -102,10 +103,6 @@ MetadataServer::MetadataServer(u16 port, const std::string &data_path,
       is_checkpoint_enabled_(is_checkpoint_enabled) {
   server_ = std::make_unique<RpcServer>(port);
   init_fs(data_path);
-  if (is_log_enabled_) {
-    commit_log = std::make_shared<CommitLog>(operation_->block_manager_,
-                                             is_checkpoint_enabled);
-  }
 }
 
 MetadataServer::MetadataServer(std::string const &address, u16 port,
@@ -116,10 +113,6 @@ MetadataServer::MetadataServer(std::string const &address, u16 port,
       is_checkpoint_enabled_(is_checkpoint_enabled) {
   server_ = std::make_unique<RpcServer>(address, port);
   init_fs(data_path);
-  if (is_log_enabled_) {
-    commit_log = std::make_shared<CommitLog>(operation_->block_manager_,
-                                             is_checkpoint_enabled);
-  }
 }
 
 // {Your code here}
@@ -375,6 +368,10 @@ void MetadataServer::tranx_end() {
     }
     commit_log->append_log(xid, ops);
     commit_log->commit_log(xid);
+
+    if (commit_log->wait_checkpoint()) {
+      commit_log->checkpoint();
+    }
   }
 }
 

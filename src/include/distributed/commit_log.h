@@ -79,6 +79,12 @@ public:
    */
   void write_log_entry(txn_id_t);
 
+  void set_log_start(block_id_t log_start) {
+    this->log_start_ = log_start;
+  }
+
+  auto wait_checkpoint() -> bool;
+
   bool is_checkpoint_enabled_;
   std::shared_ptr<BlockManager> bm_;
   /**
@@ -87,8 +93,9 @@ public:
   std::shared_ptr<SuperBlock> superblock_;
   usize log_entry_num_{}; // 磁盘上事务数
   std::atomic<txn_id_t> next_txn_id_{};
+  block_id_t log_start_{};
   using block_op_array = std::vector<std::shared_ptr<BlockOperation>>;
-  std::unordered_map<txn_id_t, std::pair<LogEntry, block_op_array>> log_entries_{};
+  std::unordered_map<txn_id_t, std::pair<std::shared_ptr<LogEntry>, block_op_array>> log_entries_{};
 };
 
 } // namespace chfs

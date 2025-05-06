@@ -8,7 +8,7 @@ FileOperation::FileOperation(std::shared_ptr<BlockManager> bm,
     : block_manager_(bm), inode_manager_(std::shared_ptr<InodeManager>(
                               new InodeManager(bm, max_inode_supported))),
       block_allocator_(std::shared_ptr<BlockAllocator>(
-          new BlockAllocator(bm, inode_manager_->get_reserved_blocks()))) {
+          new BlockAllocator(bm, inode_manager_->get_reserved_blocks() + (bm->enable_log() ? kMaxLogBlockSize : 0)))) {
   // now initialize the superblock
   SuperBlock(bm, inode_manager_->get_max_inode_supported()).flush(0).unwrap();
 }

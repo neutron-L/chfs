@@ -119,7 +119,7 @@ auto BlockManager::write_block(block_id_t block_id, const u8 *data)
     for (usize i = 0; i < this->block_sz; ++i) {
       if ((this->block_data + block_id * this->block_sz)[i] != data[i]) {
         if (!ops_dict.count(block_id)) {
-          ops_dict[block_id] = new u8(this->block_sz);
+          ops_dict[block_id] = new u8[this->block_sz];
           assert(ops_dict[block_id] != nullptr);
         } 
         std::memcpy(ops_dict[block_id], data, this->block_sz);
@@ -161,7 +161,7 @@ auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
     for (usize i = 0; i < len; ++i) {
       if ((this->block_data + block_id * this->block_sz)[offset + i] != data[i]) {
         if (!ops_dict.count(block_id)) {
-          auto* buffer = new u8(this->block_sz);
+          auto* buffer = new u8[this->block_sz];
           assert(buffer != nullptr);
           read_block(block_id, buffer);
           ops_dict.emplace(block_id, buffer);
