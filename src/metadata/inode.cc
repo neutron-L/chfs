@@ -14,7 +14,7 @@ auto Inode::write_indirect_block(std::shared_ptr<BlockManager> &bm,
     return ChfsNullResult(ErrorType::INVALID_ARG);
   }
 
-  bm->write_block_safe(this->blocks[this->nblocks - 1], buffer.data());
+  bm->write_block(this->blocks[this->nblocks - 1], buffer.data());
   return KNullOk;
 }
 
