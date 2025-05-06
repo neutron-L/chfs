@@ -12,6 +12,7 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
 
 #include "common/config.h"
 #include "common/macros.h"
@@ -40,6 +41,10 @@ protected:
   bool maybe_failed;
   usize write_fail_cnt;
 
+  /* log支持，跟踪写入的块信息 */
+  bool start_log{false};
+  bool is_log_enabled;
+  std::unordered_map<block_id_t, u8 *> ops_dict{};
 public:
   /**
    * Creates a new block manager that writes to a file-backed block device.
@@ -88,10 +93,25 @@ public:
       -> ChfsNullResult;
 
   /**
+   * Write a block to the internal block device.  This is a write-through one,
+   * i.e., no cache. And it must be successful, temporarily ignore maybe_failed.
+   * @param block_id id of the block
+   * @param block_data raw block data
+   */
+  virtual void write_block_safe(block_id_t block_id, const u8 *block_data);
+
+  /**
    * Write a partial block to the internal block device.
    */
   virtual auto write_partial_block(block_id_t block_id, const u8 *block_data,
                                    usize offset, usize len) -> ChfsNullResult;
+
+   /**
+   * Write a partial block to the internal block device.
+   * And it must be successful, temporarily ignore maybe_failed.
+   */
+  virtual void write_partial_block_safe(block_id_t block_id, const u8 *block_data,
+                                   usize offset, usize len);
 
   /**
    * Read a block to the internal block device.
@@ -142,6 +162,18 @@ public:
   auto set_may_fail(bool may_fail) -> void {
     this->maybe_failed = may_fail;
   }
+
+   /**
+   * 开始了一个事务，磁盘块的更新需要记录
+   */
+  void start_transaction();
+
+  /**
+   * 每次执行完一个事务，commit log调用该方法取走事务更新的块
+   */
+  auto retrieve_updated_block() -> std::unordered_map<block_id_t, u8*>;
+
+  auto enable_log() -> bool { return is_log_enabled; }
 };
 
 /**

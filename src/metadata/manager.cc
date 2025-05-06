@@ -100,7 +100,19 @@ auto InodeManager::allocate_inode(InodeType type, block_id_t bid)
       // 3. Return the id of the allocated inode.
       //    You may have to use the `RAW_2_LOGIC` macro
       //    to get the result inode id.
-      UNIMPLEMENTED();
+      // UNIMPLEMENTED();
+      inode_id_t idx = count * bm->block_size() * KBitsPerByte + free_idx.value();
+      std::vector<u8> buffer(bm->block_size());
+
+      Inode inode = {type, bm->block_size()};
+      inode.flush_to_buffer(buffer.data());
+      auto write_res = bm->write_block(bid, buffer.data());
+      if (write_res.is_err()) {
+        return ChfsResult<inode_id_t>(write_res.unwrap_error());
+      }
+      set_table(idx, bid);
+      
+      return RAW_2_LOGIC(idx);
     }
   }
 
@@ -113,7 +125,12 @@ auto InodeManager::set_table(inode_id_t idx, block_id_t bid) -> ChfsNullResult {
   // TODO: Implement this function.
   // Fill `bid` into the inode table entry
   // whose index is `idx`.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  if (idx >= max_inode_supported) {
+    return ChfsNullResult(ErrorType::INVALID_ARG);
+  }
+  auto inode_per_block = bm->block_size() / sizeof(block_id_t);
+  bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), (idx % inode_per_block) * sizeof(block_id_t), sizeof(block_id_t));
 
   return KNullOk;
 }
@@ -127,7 +144,15 @@ auto InodeManager::get(inode_id_t id) -> ChfsResult<block_id_t> {
   // from the inode table. You may have to use
   // the macro `LOGIC_2_RAW` to get the inode
   // table index.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  if (id >= max_inode_supported - 1) {
+    return ChfsResult<block_id_t>(ErrorType::INVALID_ARG);
+  }
+  inode_id_t idx = LOGIC_2_RAW(id);
+  auto inode_per_block = bm->block_size() / sizeof(block_id_t);
+  std::vector<block_id_t> buffer(bm->block_size() / sizeof(block_id_t));
+  bm->read_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(buffer.data()));
+  res_block_id = buffer[idx % inode_per_block];
 
   return ChfsResult<block_id_t>(res_block_id);
 }
@@ -218,13 +243,32 @@ auto InodeManager::free_inode(inode_id_t id) -> ChfsNullResult {
     return ChfsNullResult(ErrorType::INVALID_ARG);
   }
 
+  inode_id_t idx = LOGIC_2_RAW(id);
+  block_id_t bid = KInvalidBlockID;
   // TODO:
   // 1. Clear the inode table entry.
   //    You may have to use macro `LOGIC_2_RAW`
   //    to get the index of inode table from `id`.
+  {
+    auto inode_per_block = bm->block_size() / sizeof(block_id_t);
+    std::vector<block_id_t> buffer(bm->block_size() / sizeof(block_id_t));
+    bm->write_partial_block(1 + idx / inode_per_block, reinterpret_cast<u8 *>(&bid), (idx % inode_per_block) * sizeof(block_id_t), sizeof(block_id_t));
+  }
+  
   // 2. Clear the inode bitmap.
-  UNIMPLEMENTED();
-
+  {
+    std::vector<u8> buffer(bm->block_size());
+    const auto total_bits_per_block = this->bm->block_size() * KBitsPerByte;
+    const auto i = idx / total_bits_per_block;
+    chfs::usize payload = bm->block_size();
+    bm->read_block(1 + this->n_table_blocks + i, buffer.data());
+    if (!Bitmap(buffer.data(), payload).check(idx % total_bits_per_block)) {
+      return ChfsNullResult(ErrorType::INVALID_ARG);
+    }
+    Bitmap(buffer.data(), payload).clear(idx % total_bits_per_block);
+    bm->write_block(1 + this->n_table_blocks + i, buffer.data());
+  }
+  
   return KNullOk;
 }
 

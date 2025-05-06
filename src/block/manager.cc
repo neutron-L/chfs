@@ -81,7 +81,26 @@ BlockManager::BlockManager(const std::string &file, usize block_cnt, bool is_log
   this->write_fail_cnt = 0;
   this->maybe_failed = false;
   // TODO: Implement this function.
-  UNIMPLEMENTED();    
+  // UNIMPLEMENTED();    
+  this->is_log_enabled = is_log_enabled;
+
+  this->fd = open(file.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+  CHFS_ASSERT(this->fd != -1, "Failed to open the block manager file");
+
+  auto file_sz = get_file_sz(this->file_name_);
+  if (file_sz == 0) {
+    initialize_file(this->fd, this->total_storage_sz());
+  } else {
+    this->block_cnt = file_sz / this->block_sz;
+    CHFS_ASSERT(this->total_storage_sz() == KDefaultBlockCnt * this->block_sz,
+                "The file size mismatches");
+  }
+
+  this->block_data =
+      static_cast<u8 *>(mmap(nullptr, this->total_storage_sz(),
+                             PROT_READ | PROT_WRITE, MAP_SHARED, this->fd, 0));
+  CHFS_ASSERT(this->block_data != MAP_FAILED, "Failed to mmap the data");
+  CHFS_ASSERT(this->block_cnt > kMaxLogBlockSize, "Failed to alloc the log region");
 }
 
 auto BlockManager::write_block(block_id_t block_id, const u8 *data)
@@ -95,9 +114,33 @@ auto BlockManager::write_block(block_id_t block_id, const u8 *data)
   
 
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  if (is_log_enabled && start_log) {
+    for (usize i = 0; i < this->block_sz; ++i) {
+      if ((this->block_data + block_id * this->block_sz)[i] != data[i]) {
+        if (!ops_dict.count(block_id)) {
+          ops_dict[block_id] = new u8[this->block_sz];
+          assert(ops_dict[block_id] != nullptr);
+        } 
+        std::memcpy(ops_dict[block_id], data, this->block_sz);
+        break;
+      }
+    }
+  }
+  
+  std::memcpy(this->block_data + block_id * this->block_sz, data, this->block_sz);
   this->write_fail_cnt++;
+
   return KNullOk;
+}
+
+void BlockManager::write_block_safe(block_id_t block_id, const u8 *block_data) {
+  do {
+    auto res = write_block(block_id, block_data);
+    if (res.is_ok()) {
+      break;
+    }
+  } while (true);
 }
 
 auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
@@ -111,15 +154,46 @@ auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
   }
 
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  offset %= this->block_sz;
+  len = std::min(len, this->block_sz - offset);
+  if (is_log_enabled && start_log) {
+    for (usize i = 0; i < len; ++i) {
+      if ((this->block_data + block_id * this->block_sz)[offset + i] != data[i]) {
+        if (!ops_dict.count(block_id)) {
+          auto* buffer = new u8[this->block_sz];
+          assert(buffer != nullptr);
+          read_block(block_id, buffer);
+          ops_dict.emplace(block_id, buffer);
+        } 
+        std::memcpy(ops_dict[block_id] + offset, data, len);
+        break;
+      }
+    }
+  }
+  
+  std::memcpy(this->block_data + block_id * this->block_sz + offset, data, len);
   this->write_fail_cnt++;
+
   return KNullOk;
+}
+
+
+void BlockManager::write_partial_block_safe(block_id_t block_id, const u8 *data,
+                                       usize offset, usize len) {
+  do {
+    auto res = write_partial_block(block_id, data, offset, len);
+    if (res.is_ok()) {
+      break;
+    }
+  } while (true);
 }
 
 auto BlockManager::read_block(block_id_t block_id, u8 *data) -> ChfsNullResult {
 
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  std::memcpy(data, this->block_data + block_id * this->block_sz, this->block_sz);
 
   return KNullOk;
 }
@@ -127,7 +201,10 @@ auto BlockManager::read_block(block_id_t block_id, u8 *data) -> ChfsNullResult {
 auto BlockManager::zero_block(block_id_t block_id) -> ChfsNullResult {
   
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  for (usize i = 0; i < this->block_sz; ++i) {
+    this->block_data[block_id * this->block_sz + i] = 0;
+  }
 
   return KNullOk;
 }
@@ -150,6 +227,17 @@ auto BlockManager::flush() -> ChfsNullResult {
     return ChfsNullResult(ErrorType::INVALID);
   return KNullOk;
 }
+
+void BlockManager::start_transaction(){
+  start_log = true;
+  ops_dict.clear();
+}
+
+auto BlockManager::retrieve_updated_block() -> std::unordered_map<block_id_t, u8*> {
+  start_log = false;
+  return ops_dict;
+}
+
 
 BlockManager::~BlockManager() {
   if (!this->in_memory) {

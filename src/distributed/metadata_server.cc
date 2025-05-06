@@ -5,6 +5,9 @@
 
 namespace chfs {
 
+// 定义在src/filesystem/data_op.c
+u64 calculate_block_sz(u64 file_sz, u64 block_sz);
+
 inline auto MetadataServer::bind_handlers() {
   server_->bind("mknode",
                 [this](u8 type, inode_id_t parent, std::string const &name) {
@@ -82,8 +85,8 @@ inline auto MetadataServer::init_fs(const std::string &data_path) {
       operation_->block_manager_->set_may_fail(true);
     commit_log = std::make_shared<CommitLog>(operation_->block_manager_,
                                              is_checkpoint_enabled_);
+    commit_log->set_log_start(operation_->inode_manager_->get_reserved_blocks());
   }
-
   bind_handlers();
 
   /**
@@ -99,10 +102,6 @@ MetadataServer::MetadataServer(u16 port, const std::string &data_path,
       is_checkpoint_enabled_(is_checkpoint_enabled) {
   server_ = std::make_unique<RpcServer>(port);
   init_fs(data_path);
-  if (is_log_enabled_) {
-    commit_log = std::make_shared<CommitLog>(operation_->block_manager_,
-                                             is_checkpoint_enabled);
-  }
 }
 
 MetadataServer::MetadataServer(std::string const &address, u16 port,
@@ -113,81 +112,272 @@ MetadataServer::MetadataServer(std::string const &address, u16 port,
       is_checkpoint_enabled_(is_checkpoint_enabled) {
   server_ = std::make_unique<RpcServer>(address, port);
   init_fs(data_path);
-  if (is_log_enabled_) {
-    commit_log = std::make_shared<CommitLog>(operation_->block_manager_,
-                                             is_checkpoint_enabled);
-  }
 }
 
 // {Your code here}
 auto MetadataServer::mknode(u8 type, inode_id_t parent, const std::string &name)
     -> inode_id_t {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  InodeType itype = InodeType::Unknown;
+  if (type == RegularFileType) {
+    itype = InodeType::FILE;
+  } else if (type == DirectoryType) {
+    itype = InodeType::Directory;
+  }
+  
+  if (itype == InodeType::Unknown) {
+    return KInvalidInodeID;
+  }
 
-  return 0;
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
+  tranx_begin();
+  auto res = operation_->mk_helper(parent, name.c_str(), itype);
+  if (res.is_err()) {
+    if (res.unwrap_error() != ErrorType::INVALID) {
+      tranx_abort();
+    } else {
+      tranx_end();
+    }
+    return KInvalidInodeID;
+  }
+
+  tranx_end();
+
+  return res.unwrap();
 }
 
 // {Your code here}
 auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
     -> bool {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
+  tranx_begin();
+  auto lookup_res = operation_->lookup(parent, name.c_str());
+  if (lookup_res.is_err()) {
+    tranx_abort();
+    return false;
+  }
+  inode_id_t id = lookup_res.unwrap();
+  auto read_res = operation_->read_file(parent);
+  if (read_res.is_err()) {
+    tranx_abort();
+    return false;
+  }
+  
+  auto file_block_vec = get_block_map(id);
+  read_res = operation_->read_file(parent);
+  if (read_res.is_err()) {
+    tranx_abort();
+    return false;
+  }
+  for (const auto & info : file_block_vec) {
+    clients_[std::get<1>(info)]->call("free_block", std::get<0>(info));
+  }
+ 
+  auto block_id = operation_->inode_manager_->get(id);
+  assert(block_id.is_ok());
+  operation_->block_allocator_->deallocate(block_id.unwrap());
+  operation_->inode_manager_->free_inode(id);
 
-  return false;
+  read_res = operation_->read_file(parent);
+  if (read_res.is_err()) {
+    tranx_abort();
+    return false;
+  }
+  auto src = std::string(reinterpret_cast<char *>(read_res.unwrap().data()), read_res.unwrap().size());
+  src = rm_from_directory(src, name);
+  std::vector<u8> buffer(src.length());
+  memcpy(buffer.data(), src.c_str(), src.length());
+
+  auto write_res = operation_->write_file(parent, buffer);
+  if (write_res.is_err()) {
+    tranx_abort();
+  }
+  tranx_end();
+
+  return true;
 }
 
 // {Your code here}
 auto MetadataServer::lookup(inode_id_t parent, const std::string &name)
     -> inode_id_t {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
-
-  return 0;
+  // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
+  auto res = operation_->lookup(parent, name.c_str());
+  if (res.is_err()) {
+    return KInvalidInodeID;
+  }
+  return res.unwrap();
 }
 
 // {Your code here}
 auto MetadataServer::get_block_map(inode_id_t id) -> std::vector<BlockInfo> {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
-
-  return {};
+  // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
+  std::vector<BlockInfo> blockInfo;
+  std::vector<u8> buffer(operation_->block_manager_->block_size());
+  auto res = operation_->inode_manager_->read_inode(id, buffer);
+  if (res.is_err()) {
+    return {};
+  }
+  Inode * inode_p = reinterpret_cast<Inode *>(buffer.data());
+  BlockInfo * blockInfo_p = reinterpret_cast<BlockInfo *>(inode_p->blocks);
+  auto n = calculate_block_sz(inode_p->get_size(), operation_->block_manager_->block_size());
+  for (int i = 0; i < n && std::get<0>(blockInfo_p[i]) != KInvalidBlockID; ++i) {
+    blockInfo.push_back(blockInfo_p[i]);
+  }
+  return blockInfo;
 }
 
 // {Your code here}
 auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
+  std::vector<u8> buffer(operation_->block_manager_->block_size());
+  auto read_res = operation_->inode_manager_->read_inode(id, buffer);
+  if (read_res.is_err()) {
+    return {KInvalidBlockID, 0, 0};
+  }
+  Inode * inode_p = reinterpret_cast<Inode *>(buffer.data());
+  BlockInfo * blockInfo_p = reinterpret_cast<BlockInfo *>(inode_p->blocks);
+  auto n = inode_p->get_block_info_num(sizeof(BlockInfo));
+  int i = calculate_block_sz(inode_p->get_size(), operation_->block_manager_->block_size());
+  if (i == n) {
+    return {KInvalidBlockID, 0, 0};
+  }
 
-  return {};
+  // 选择一个data server 
+  auto iter = clients_.begin();
+  std::advance(iter, generator.rand(0, num_data_servers - 1)); 
+  auto cli = iter->second;
+  auto alloc_res = cli->call("alloc_block");
+  if (alloc_res.is_err()) {
+    return {KInvalidBlockID, 0, 0};
+  }
+  auto [block_id, version] =
+      alloc_res.unwrap()->as<std::pair<block_id_t, version_t>>();
+  inode_p->set_size(inode_p->get_size() + operation_->block_manager_->block_size());
+  blockInfo_p[i] = {block_id, iter->first, version};
+  operation_->block_manager_->write_block_safe(read_res.unwrap(), buffer.data());
+
+  return {block_id, iter->first, version};
 }
+
 
 // {Your code here}
 auto MetadataServer::free_block(inode_id_t id, block_id_t block_id,
                                 mac_id_t machine_id) -> bool {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
 
-  return false;
+  std::vector<u8> buffer(operation_->block_manager_->block_size());
+  auto read_res = operation_->inode_manager_->read_inode(id, buffer);
+  if (read_res.is_err()) {
+    return false;
+  }
+  Inode * inode_p = reinterpret_cast<Inode *>(buffer.data());
+  BlockInfo * blockInfo_p = reinterpret_cast<BlockInfo *>(inode_p->blocks);
+  
+  auto n = calculate_block_sz(inode_p->get_size(), operation_->block_manager_->block_size());
+  decltype(n) i = 0;
+  while (i < n && !(std::get<0>(blockInfo_p[i]) == block_id && std::get<1>(blockInfo_p[i]) == machine_id)) {
+    ++i;
+  }
+  if (i == n) {
+    return false;
+  }
+  // what fuck!!
+  // operation_->block_allocator_->deallocate(block_id);
+  auto res = clients_[machine_id]->call("free_block", block_id);
+  if (res.is_err() || res.unwrap()->as<bool>() == false) {
+    std::cout << "free " << block_id << " failed\n";
+  }
+  // 更新文件大小
+  // 貌似必须紧缩文件，否则无法通过测试
+  // 但是除了测试程序没有其他地方使用了这个接口
+  std::memmove(blockInfo_p + i, blockInfo_p + i + 1, (n - i - 1) * sizeof(BlockInfo));
+  inode_p->set_size(inode_p->get_size() - operation_->block_manager_->block_size());
+
+  operation_->block_manager_->write_block_safe(read_res.unwrap(), buffer.data());
+
+  return true;
 }
 
 // {Your code here}
 auto MetadataServer::readdir(inode_id_t node)
     -> std::vector<std::pair<std::string, inode_id_t>> {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
+  auto read_res = operation_->read_file(node);
+  if (read_res.is_err()) {
+    return {};
+  }
+  std::list<DirectoryEntry> list;
+  auto content = std::string(reinterpret_cast<char *>(read_res.unwrap().data()), read_res.unwrap().size());
+  parse_directory(content, list);
+  std::vector<std::pair<std::string, inode_id_t>> res;
+  res.reserve(list.size());
+  for (auto & entry : list) {
+    res.push_back({entry.name, entry.id});
+  }
 
-  return {};
+  return res;
 }
 
 // {Your code here}
 auto MetadataServer::get_type_attr(inode_id_t id)
     -> std::tuple<u64, u64, u64, u64, u8> {
   // TODO: Implement this function.
-  UNIMPLEMENTED();
-
-  return {};
+  // UNIMPLEMENTED();
+  std::lock_guard<std::recursive_mutex> lock(rmtx);
+  auto res = operation_->get_type_attr(id);
+  if (res.is_err()) {
+    return {};
+  }
+  auto [type, attr] = res.unwrap();
+  if (type == InodeType::Unknown) {
+    return {};
+  }
+  return std::tuple<u64, u64, u64, u64, u8>(attr.size, attr.atime, attr.mtime, attr.ctime, static_cast<u8>(type == InodeType::FILE ? RegularFileType : DirectoryType));
 }
+
+void MetadataServer::tranx_begin() {
+  if (is_log_enabled_) {
+    operation_->block_manager_->start_transaction();
+  }
+}
+
+void MetadataServer::tranx_abort() {
+  if (is_log_enabled_) {
+    assert(false); // 目前应该不会出现这种情况
+  }
+}
+
+
+void MetadataServer::tranx_end() {
+  if (is_log_enabled_) {
+    txn_id_t xid = commit_log->get_txn_id();
+    auto ops_dict = operation_->block_manager_->retrieve_updated_block();
+    std::vector<std::shared_ptr<BlockOperation>> ops;
+    for (auto & [bid, buffer] : ops_dict) {
+      ops.push_back(std::make_shared<BlockOperation>(bid, std::vector<u8>{buffer, buffer + operation_->block_manager_->block_size()}));
+    }
+    commit_log->append_log(xid, ops);
+    commit_log->commit_log(xid);
+
+    if (commit_log->wait_checkpoint()) {
+      commit_log->checkpoint();
+    }
+  }
+}
+
 
 auto MetadataServer::reg_server(const std::string &address, u16 port,
                                 bool reliable) -> bool {
@@ -207,5 +397,4 @@ auto MetadataServer::run() -> bool {
   running = true;
   return true;
 }
-
 } // namespace chfs

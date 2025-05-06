@@ -227,6 +227,21 @@ private:
    */
   inline auto init_fs(const std::string &data_path);
 
+  /**
+   * 事务开始时执行，bm记录更新的磁盘块
+   */
+  void tranx_begin();
+
+  /**
+   * 事务执行失败，bm丢弃记录的信息
+   */
+  void tranx_abort();
+
+  /**
+   * 事务结束执行，完成事务log记录和提交
+   */
+  void tranx_end();
+
   std::unique_ptr<RpcServer> server_; // Receiving requests from the client
   std::shared_ptr<FileOperation> operation_; // Real metadata handler
   std::map<mac_id_t, std::shared_ptr<RpcClient>>
@@ -245,6 +260,7 @@ private:
   /**
    * {You can add anything you want here}
    */
+  std::recursive_mutex rmtx{};
 };
 
 } // namespace chfs
