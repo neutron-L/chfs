@@ -19,17 +19,25 @@ const std::string RAFT_RPC_INSTALL_SNAPSHOT = "install snapshot";
 
 struct RequestVoteArgs {
     /* Lab3: Your code here */
-    
+    u64 term;
+    u64 candidateId;
+    u64 lastlogIndex;
+    u64 lastlogTerm;
     MSGPACK_DEFINE(
-    
+        term,
+        candidateId,
+        lastlogIndex,
+        lastlogTerm
     )
 };
 
 struct RequestVoteReply {
     /* Lab3: Your code here */
-
+    u64 term;
+    bool voteGranted;
     MSGPACK_DEFINE(
-    
+        term,
+        voteGranted
     )
 };
 
@@ -40,9 +48,7 @@ struct AppendEntriesArgs {
 
 struct RpcAppendEntriesArgs {
     /* Lab3: Your code here */
-
     MSGPACK_DEFINE(
-    
     )
 };
 
